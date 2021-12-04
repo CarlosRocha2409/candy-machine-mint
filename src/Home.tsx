@@ -6,7 +6,9 @@ import Alert from "@material-ui/lab/Alert";
 
 import * as anchor from "@project-serum/anchor";
 
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { LAMPORTS_PER_SOL, Connection, PublicKey } from "@solana/web3.js";
+import { Connection as MetaplexConnection, programs } from "@metaplex/js";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 import { useAnchorWallet } from "@solana/wallet-adapter-react";
 import { WalletDialogButton } from "@solana/wallet-adapter-material-ui";
@@ -45,6 +47,7 @@ const Home = (props: HomeProps) => {
   const [itemsAvailable, setItemsAvailable] = useState(0);
   const [itemsRedeemed, setItemsRedeemed] = useState(0);
   const [itemsRemaining, setItemsRemaining] = useState(0);
+  const [imagesUrl, setImagesUrls] = useState<string[]>([]);
 
   const [alertState, setAlertState] = useState<AlertState>({
     open: false,
@@ -55,6 +58,42 @@ const Home = (props: HomeProps) => {
   const [startDate, setStartDate] = useState(new Date(props.startDate));
 
   const wallet = useAnchorWallet();
+  useEffect(() => {
+    if (wallet) {
+      const con = new Connection("https://api.mainnet-beta.solana.com");
+
+      console.log("HEEEY");
+      (async () => {
+        const acc = await con.getParsedTokenAccountsByOwner(wallet.publicKey, {
+          programId: TOKEN_PROGRAM_ID,
+        });
+        console.log(acc);
+        let links: string[] = [];
+        const images = acc.value
+          .filter((a) => a.account.data.parsed.info.tokenAmount.decimals == 0)
+          .map((acc) => {
+            console.log(acc.account.data.parsed.info.mint);
+            return (async () => {
+              const addres = await programs.metadata.Metadata.getPDA(
+                acc.account.data.parsed.info.mint
+              );
+              const meta = await programs.metadata.Metadata.load(con, addres);
+
+              const imag = await fetch(meta.data.data.uri)
+                .then((response) => response.json())
+                .then((res) => {
+                  return res.image;
+                });
+              return imag;
+            })();
+          });
+        Promise.all(images).then((values) => {
+          setImagesUrls(values);
+        });
+      })();
+    }
+  }, [wallet]);
+
   const [candyMachine, setCandyMachine] = useState<CandyMachine>();
 
   const refreshCandyMachineState = () => {
@@ -178,6 +217,10 @@ const Home = (props: HomeProps) => {
       {wallet && <p>Redeemed: {itemsRedeemed}</p>}
 
       {wallet && <p>Remaining: {itemsRemaining}</p>}
+
+      {imagesUrl.map((imge) => {
+        return <img src={imge} key={imge} alt={imge} height="200px" />;
+      })}
 
       <MintContainer>
         {!wallet ? (
